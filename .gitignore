@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+
+# Runtime data
+backend/generated/
+backend/*.db
+backend/test_mix.db
+frontend/.env
+backend/.env
