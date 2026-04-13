@@ -1,6 +1,5 @@
 import os
 import requests
-import pandas as pd
 import streamlit as st
 
 st.set_page_config(page_title="Concrete Mix Design Manager", layout="wide")
@@ -42,10 +41,21 @@ except Exception:
 
 st.subheader("Mix Database")
 if items:
-    df = pd.DataFrame(items)[[
-        "mix_id", "mix_name", "concrete_grade", "design_method", "cement_type", "category", "status", "slug"
-    ]]
-    st.dataframe(df, use_container_width=True)
+    rows = []
+    for m in items:
+        rows.append(
+            {
+                "mix_id": m.get("mix_id"),
+                "mix_name": m.get("mix_name"),
+                "concrete_grade": m.get("concrete_grade"),
+                "design_method": m.get("design_method"),
+                "cement_type": m.get("cement_type"),
+                "category": m.get("category"),
+                "status": m.get("status"),
+                "slug": m.get("slug"),
+            }
+        )
+    st.dataframe(rows, use_container_width=True)
 else:
     st.info("No records found.")
 
@@ -59,18 +69,18 @@ if slug:
         c1, c2 = st.columns([2, 1])
         with c1:
             table_rows = [
-                ["Grade of concrete", mix["concrete_grade"], "-"],
-                ["Target mean strength", mix["target_mean_strength"], "MPa"],
-                ["Water-cement ratio", mix["water_cement_ratio"], "-"],
-                ["Water content", mix["water_content_kg_m3"], "kg/m3"],
-                ["Cement content", mix["cement_content_kg_m3"], "kg/m3"],
-                ["Fine aggregate", mix["fine_agg_content_kg_m3"], "kg/m3"],
-                ["Coarse aggregate", mix["coarse_agg_content_kg_m3"], "kg/m3"],
-                ["Admixture dosage", mix["admixture_dosage_pct"], "%"],
-                ["Water adjustment", mix["field_water_adjustment_kg"], "kg/m3"],
-                ["Mix proportion", mix["mix_proportion_by_weight"], "by wt"],
+                {"Parameter": "Grade of concrete", "Value": mix["concrete_grade"], "Unit": "-"},
+                {"Parameter": "Target mean strength", "Value": mix["target_mean_strength"], "Unit": "MPa"},
+                {"Parameter": "Water-cement ratio", "Value": mix["water_cement_ratio"], "Unit": "-"},
+                {"Parameter": "Water content", "Value": mix["water_content_kg_m3"], "Unit": "kg/m3"},
+                {"Parameter": "Cement content", "Value": mix["cement_content_kg_m3"], "Unit": "kg/m3"},
+                {"Parameter": "Fine aggregate", "Value": mix["fine_agg_content_kg_m3"], "Unit": "kg/m3"},
+                {"Parameter": "Coarse aggregate", "Value": mix["coarse_agg_content_kg_m3"], "Unit": "kg/m3"},
+                {"Parameter": "Admixture dosage", "Value": mix["admixture_dosage_pct"], "Unit": "%"},
+                {"Parameter": "Water adjustment", "Value": mix["field_water_adjustment_kg"], "Unit": "kg/m3"},
+                {"Parameter": "Mix proportion", "Value": mix["mix_proportion_by_weight"], "Unit": "by wt"},
             ]
-            st.table(pd.DataFrame(table_rows, columns=["Parameter", "Value", "Unit"]))
+            st.table(table_rows)
 
             st.markdown("### Recalculate")
             parameter = st.selectbox(
