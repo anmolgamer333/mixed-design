@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.models.mix import MixDesign, MixRevision
 from app.schemas.mix import (
+    IS_METHOD,
     MixDesignCreate,
     MixDesignOut,
     MixDesignUpdate,
@@ -73,6 +74,8 @@ def list_mixes(
     if grade:
         query = query.filter(MixDesign.concrete_grade == grade)
     if design_method:
+        if design_method != IS_METHOD:
+            raise HTTPException(status_code=400, detail=f"Only {IS_METHOD} is supported")
         query = query.filter(MixDesign.design_method == design_method)
     if cement_type:
         query = query.filter(MixDesign.cement_type == cement_type)
@@ -360,6 +363,8 @@ async def import_mixes(file: UploadFile = File(...), db: Session = Depends(get_d
             category=str(r.get("category", "design mix")),
             download_ref=f"/api/mixes/{r['slug']}/export/pdf",
         )
+        if mix.design_method != IS_METHOD:
+            continue
         png, svg = generate_qr_assets(mix.slug)
         mix.qr_path_png = png
         mix.qr_path_svg = svg

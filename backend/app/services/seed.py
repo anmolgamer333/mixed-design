@@ -10,6 +10,10 @@ def _grade_to_strength(grade: str) -> float:
 
 
 def seed_mixes(db: Session, count: int = 60) -> int:
+    # Enforce IS-only method for existing records too.
+    db.query(MixDesign).filter(MixDesign.design_method != "IS 10262:2019").update(
+        {"design_method": "IS 10262:2019"}, synchronize_session=False
+    )
     if db.query(Material).count() == 0:
         db.add_all(
             [
@@ -32,7 +36,6 @@ def seed_mixes(db: Session, count: int = 60) -> int:
         return existing
 
     grades = ["M20", "M25", "M30", "M35", "M40", "M45", "M50"]
-    methods = ["IS 10262:2019", "ACI 211.1", "DOE Method"]
     cements = ["OPC 43", "OPC 53", "PPC", "PSC"]
     exposures = ["Mild", "Moderate", "Severe", "Very Severe"]
     categories = ["pavement mix", "structural mix", "nominal mix", "design mix", "trial mix", "site-adjusted mix"]
@@ -55,7 +58,7 @@ def seed_mixes(db: Session, count: int = 60) -> int:
             project_tag=f"Project-{(i % 10) + 1}",
             concrete_grade=grade,
             target_mean_strength=round(fck + 8.0, 2),
-            design_method=methods[i % len(methods)],
+            design_method="IS 10262:2019",
             cement_type=cements[i % len(cements)],
             max_aggregate_size_mm=20 if i % 2 == 0 else 10,
             exposure_condition=exposures[i % len(exposures)],

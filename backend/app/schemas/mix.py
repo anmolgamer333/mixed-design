@@ -1,9 +1,11 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.mix import MixStatus
+
+IS_METHOD = "IS 10262:2019"
 
 
 class MixDesignBase(BaseModel):
@@ -45,6 +47,13 @@ class MixDesignBase(BaseModel):
     category: str = "design mix"
     status: MixStatus = MixStatus.draft
     is_public: bool = False
+
+    @field_validator("design_method")
+    @classmethod
+    def validate_design_method(cls, v: str) -> str:
+        if v != IS_METHOD:
+            raise ValueError(f"Only {IS_METHOD} is supported")
+        return v
 
 
 class MixDesignCreate(MixDesignBase):
@@ -88,6 +97,15 @@ class MixDesignUpdate(BaseModel):
     category: Optional[str] = None
     status: Optional[MixStatus] = None
     is_public: Optional[bool] = None
+
+    @field_validator("design_method")
+    @classmethod
+    def validate_design_method(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if v != IS_METHOD:
+            raise ValueError(f"Only {IS_METHOD} is supported")
+        return v
 
 
 class MixDesignOut(MixDesignBase):

@@ -145,7 +145,9 @@ export function MixFormPage() {
       <div className="grid-4" style={{ marginTop: 10 }}>
         <input value={form.concrete_grade} onChange={(e) => setField("concrete_grade", e.target.value)} placeholder="Grade" />
         <input type="number" value={form.target_mean_strength} onChange={(e) => setField("target_mean_strength", Number(e.target.value))} placeholder="Target Mean Strength" />
-        <input value={form.design_method} onChange={(e) => setField("design_method", e.target.value)} placeholder="Method" />
+        <select value={form.design_method} onChange={(e) => setField("design_method", e.target.value)}>
+          <option value="IS 10262:2019">IS 10262:2019</option>
+        </select>
         <input value={form.cement_type} onChange={(e) => setField("cement_type", e.target.value)} placeholder="Cement Type" />
       </div>
       <div className="grid-4" style={{ marginTop: 10 }}>
