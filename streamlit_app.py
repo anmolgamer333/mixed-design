@@ -1,13 +1,74 @@
 import os
+import sys
+import time
+from pathlib import Path
+import threading
+
 import requests
 import streamlit as st
 
 st.set_page_config(page_title="Concrete Mix Design Manager", layout="wide")
 
-API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000/api")
+API_BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8001/api")
+AUTO_START_BACKEND = os.getenv("AUTO_START_BACKEND", "1") != "0"
+BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8001"))
+
+
+def api_available(timeout: int = 2) -> bool:
+    try:
+        r = requests.get(f"{API_BASE}/mixes", params={"page_size": 1}, timeout=timeout)
+        r.raise_for_status()
+        return True
+    except requests.RequestException:
+        return False
+
+
+@st.cache_resource(show_spinner=False)
+def ensure_backend_started():
+    if api_available():
+        return None
+
+    if not AUTO_START_BACKEND:
+        return None
+
+    root = Path(__file__).resolve().parent
+    backend_dir = root / "backend"
+    os.environ.setdefault("DATABASE_URL", "sqlite:///./mix_designs.db")
+    os.environ.setdefault("BASE_PUBLIC_URL", "http://localhost:8501")
+
+    if str(backend_dir) not in sys.path:
+        sys.path.insert(0, str(backend_dir))
+
+    def run_backend() -> None:
+        import uvicorn
+        from app.main import app
+
+        uvicorn.run(app, host="127.0.0.1", port=BACKEND_PORT, log_level="warning")
+
+    thread = threading.Thread(target=run_backend, daemon=True)
+    thread.start()
+
+    for _ in range(30):
+        if api_available(timeout=1):
+            return "embedded-backend"
+        time.sleep(1)
+
+    return "embedded-backend-timeout"
+
 
 st.title("Concrete Mix Design Manager")
 st.caption("QR-enabled mix design library with exports and recalculation")
+
+ensure_backend_started()
+if not api_available():
+    st.error("Mix Design backend is not reachable.")
+    st.code(
+        "cd backend\n"
+        "$env:DATABASE_URL='sqlite:///./mix_designs.db'\n"
+        "$env:BASE_PUBLIC_URL='http://localhost:8501'\n"
+        "python -m uvicorn app.main:app --host 127.0.0.1 --port 8001"
+    )
+    st.stop()
 
 with st.sidebar:
     st.header("Filters")
