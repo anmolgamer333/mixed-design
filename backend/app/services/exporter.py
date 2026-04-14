@@ -8,7 +8,8 @@ from reportlab.pdfgen import canvas
 from app.models.mix import MixDesign
 
 
-EXPORT_DIR = Path("generated/exports")
+BASE_DIR = Path(__file__).resolve().parents[2]  # backend/
+EXPORT_DIR = BASE_DIR / "generated" / "exports"
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from app.api.mixes import router as mix_router
 import app.models  # noqa: F401
@@ -10,6 +11,11 @@ from app.services.seed import seed_mixes
 
 
 app = FastAPI(title=settings.app_name)
+BASE_DIR = Path(__file__).resolve().parents[1]  # backend/
+GENERATED_DIR = BASE_DIR / "generated"
+SAMPLE_DATA_DIR = BASE_DIR / "sample_data"
+GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+SAMPLE_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,8 +37,8 @@ def on_startup():
 
 
 app.include_router(mix_router, prefix=settings.api_prefix)
-app.mount("/generated", StaticFiles(directory="generated"), name="generated")
-app.mount("/sample_data", StaticFiles(directory="sample_data"), name="sample_data")
+app.mount("/generated", StaticFiles(directory=str(GENERATED_DIR)), name="generated")
+app.mount("/sample_data", StaticFiles(directory=str(SAMPLE_DATA_DIR)), name="sample_data")
 
 
 @app.get("/")

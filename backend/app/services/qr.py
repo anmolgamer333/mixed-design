@@ -5,7 +5,8 @@ import qrcode.image.svg
 from app.core.config import settings
 
 
-QR_DIR = Path("generated/qr")
+BASE_DIR = Path(__file__).resolve().parents[2]  # backend/
+QR_DIR = BASE_DIR / "generated" / "qr"
 QR_DIR.mkdir(parents=True, exist_ok=True)
 
 
