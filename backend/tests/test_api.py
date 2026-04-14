@@ -79,8 +79,12 @@ def setup_module():
 
 def teardown_module():
     Base.metadata.drop_all(bind=engine)
+    engine.dispose()
     if Path("test_mix.db").exists():
-        Path("test_mix.db").unlink()
+        try:
+            Path("test_mix.db").unlink()
+        except PermissionError:
+            pass
 
 
 def test_crud_and_list():

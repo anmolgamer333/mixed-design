@@ -14,7 +14,7 @@ from sqlalchemy import asc, desc, func
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.models.mix import MixDesign, MixRevision
+from app.models.mix import MixDesign, MixRevision, MixStatus
 from app.schemas.mix import (
     IS_METHOD,
     MixDesignCreate,
@@ -102,9 +102,9 @@ def list_mixes(
 @router.get("/dashboard/summary")
 def dashboard_summary(db: Session = Depends(get_db)):
     total = db.query(func.count(MixDesign.id)).scalar() or 0
-    approved = db.query(func.count(MixDesign.id)).filter(MixDesign.status == "approved").scalar() or 0
-    trial = db.query(func.count(MixDesign.id)).filter(MixDesign.status == "trial").scalar() or 0
-    archived = db.query(func.count(MixDesign.id)).filter(MixDesign.status == "archived").scalar() or 0
+    approved = db.query(func.count(MixDesign.id)).filter(MixDesign.status == MixStatus.approved).scalar() or 0
+    trial = db.query(func.count(MixDesign.id)).filter(MixDesign.status == MixStatus.trial).scalar() or 0
+    archived = db.query(func.count(MixDesign.id)).filter(MixDesign.status == MixStatus.archived).scalar() or 0
     recent = db.query(MixDesign).order_by(desc(MixDesign.updated_at)).limit(8).all()
     return {
         "total_mixes": total,
