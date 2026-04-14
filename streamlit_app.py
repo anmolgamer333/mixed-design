@@ -217,7 +217,14 @@ if slug:
 
         with c2:
             st.markdown("### QR")
-            st.image(f"{API_BASE}/mixes/{slug}/qr/png", caption=f"QR for {slug}")
+            try:
+                qr_resp = api_get(f"/mixes/{slug}/qr/png", timeout=20)
+                if qr_resp.status_code == 200:
+                    st.image(qr_resp.content, caption=f"QR for {slug}")
+                else:
+                    st.warning("QR could not be loaded.")
+            except requests.RequestException:
+                st.warning("QR could not be loaded.")
             st.markdown(f"[Download CSV]({API_BASE}/mixes/{slug}/export/csv)")
             st.markdown(f"[Download Excel]({API_BASE}/mixes/{slug}/export/xlsx)")
             st.markdown(f"[Download PDF]({API_BASE}/mixes/{slug}/export/pdf)")

@@ -44,6 +44,19 @@ def _apply_sort(query, sort_by: str, order: str):
     return query.order_by(desc(col) if order == "desc" else asc(col))
 
 
+def _ensure_qr_assets(mix: MixDesign, db: Session) -> None:
+    png_exists = bool(mix.qr_path_png) and Path(mix.qr_path_png).exists()
+    svg_exists = bool(mix.qr_path_svg) and Path(mix.qr_path_svg).exists()
+    if png_exists and svg_exists:
+        return
+
+    png, svg = generate_qr_assets(mix.slug)
+    mix.qr_path_png = png
+    mix.qr_path_svg = svg
+    db.commit()
+    db.refresh(mix)
+
+
 @router.get("", response_model=MixListResponse)
 def list_mixes(
     db: Session = Depends(get_db),
@@ -235,6 +248,7 @@ def get_qr_png(slug: str, db: Session = Depends(get_db)):
     mix = db.query(MixDesign).filter(MixDesign.slug == slug).first()
     if not mix:
         raise HTTPException(status_code=404, detail="Mix not found")
+    _ensure_qr_assets(mix, db)
     return FileResponse(mix.qr_path_png, media_type="image/png", filename=f"{slug}.png")
 
 
@@ -243,6 +257,7 @@ def get_qr_svg(slug: str, db: Session = Depends(get_db)):
     mix = db.query(MixDesign).filter(MixDesign.slug == slug).first()
     if not mix:
         raise HTTPException(status_code=404, detail="Mix not found")
+    _ensure_qr_assets(mix, db)
     return FileResponse(mix.qr_path_svg, media_type="image/svg+xml", filename=f"{slug}.svg")
 
 
