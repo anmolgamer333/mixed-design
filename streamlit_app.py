@@ -18,6 +18,21 @@ HTTP = requests.Session()
 HTTP.trust_env = False
 
 
+def infer_public_base_url() -> str | None:
+    try:
+        headers = dict(st.context.headers)
+        host = headers.get("host") or headers.get("Host")
+        proto = headers.get("x-forwarded-proto") or headers.get("X-Forwarded-Proto") or "https"
+        if host:
+            return f"{proto}://{host}"
+    except Exception:
+        return None
+    return None
+
+
+INFERRED_PUBLIC_BASE_URL = infer_public_base_url()
+
+
 def _api_url(path: str) -> str:
     if not path.startswith("/"):
         path = "/" + path
@@ -63,7 +78,7 @@ def ensure_backend_started():
     root = Path(__file__).resolve().parent
     backend_dir = root / "backend"
     os.environ.setdefault("DATABASE_URL", "sqlite:///./mix_designs.db")
-    os.environ.setdefault("BASE_PUBLIC_URL", "http://localhost:8501")
+    os.environ.setdefault("BASE_PUBLIC_URL", INFERRED_PUBLIC_BASE_URL or "http://localhost:8501")
 
     if str(backend_dir) not in sys.path:
         sys.path.insert(0, str(backend_dir))
@@ -163,7 +178,26 @@ if items:
 else:
     st.info("No records found.")
 
-slug = st.text_input("Open mix by slug", value=(items[0]["slug"] if items else ""))
+query_slug = st.query_params.get("slug", "")
+if isinstance(query_slug, list):
+    query_slug = query_slug[0] if query_slug else ""
+default_slug = query_slug or (items[0]["slug"] if items else "")
+slug = st.text_input("Open mix by slug", value=default_slug)
+if slug and st.query_params.get("slug") != slug:
+    st.query_params["slug"] = slug
+
+
+def render_download_button(label: str, path: str, filename: str, mime: str) -> None:
+    try:
+        resp = api_get(path, timeout=30)
+        if resp.status_code == 200:
+            st.download_button(label, data=resp.content, file_name=filename, mime=mime, use_container_width=True)
+        else:
+            st.caption(f"{label} unavailable")
+    except requests.RequestException:
+        st.caption(f"{label} unavailable")
+
+
 if slug:
     detail = api_get(f"/mixes/{slug}", timeout=20)
     if detail.status_code == 200:
@@ -225,11 +259,18 @@ if slug:
                     st.warning("QR could not be loaded.")
             except requests.RequestException:
                 st.warning("QR could not be loaded.")
-            st.markdown(f"[Download CSV]({API_BASE}/mixes/{slug}/export/csv)")
-            st.markdown(f"[Download Excel]({API_BASE}/mixes/{slug}/export/xlsx)")
-            st.markdown(f"[Download PDF]({API_BASE}/mixes/{slug}/export/pdf)")
-            st.markdown(f"[Download QR PNG]({API_BASE}/mixes/{slug}/qr/png)")
-            st.markdown(f"[Download QR SVG]({API_BASE}/mixes/{slug}/qr/svg)")
+
+            st.markdown("### Downloads")
+            render_download_button("Download CSV", f"/mixes/{slug}/export/csv", f"{slug}.csv", "text/csv")
+            render_download_button(
+                "Download Excel",
+                f"/mixes/{slug}/export/xlsx",
+                f"{slug}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            render_download_button("Download PDF", f"/mixes/{slug}/export/pdf", f"{slug}.pdf", "application/pdf")
+            render_download_button("Download QR PNG", f"/mixes/{slug}/qr/png", f"{slug}.png", "image/png")
+            render_download_button("Download QR SVG", f"/mixes/{slug}/qr/svg", f"{slug}.svg", "image/svg+xml")
     else:
         st.error("Mix not found")
 
