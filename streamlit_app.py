@@ -48,6 +48,10 @@ def api_post(path: str, **kwargs):
     return HTTP.post(_api_url(path), **kwargs)
 
 
+def api_put(path: str, **kwargs):
+    return HTTP.put(_api_url(path), **kwargs)
+
+
 def api_available(timeout: int = 2) -> bool:
     try:
         r = api_get("/mixes", params={"page_size": 1}, timeout=timeout)
@@ -205,6 +209,154 @@ def render_download_button(
         st.caption(f"{label} unavailable")
 
 
+def _clamp(value: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, value))
+
+
+def local_recalc_preview(mix_data: dict, parameter: str, new_value: float) -> tuple[dict, list[str]]:
+    m = dict(mix_data)
+    warnings: list[str] = []
+
+    if parameter == "water_cement_ratio":
+        m["water_cement_ratio"] = _clamp(float(new_value), 0.25, 0.70)
+        m["cement_content_kg_m3"] = round(float(m["water_content_kg_m3"]) / float(m["water_cement_ratio"]), 2)
+    elif parameter == "slump_mm":
+        prev_slump = float(m["slump_mm"])
+        m["slump_mm"] = _clamp(float(new_value), 20.0, 180.0)
+        delta = (float(m["slump_mm"]) - prev_slump) / 10.0
+        m["water_content_kg_m3"] = round(float(m["water_content_kg_m3"]) + delta * 2.0, 2)
+        m["cement_content_kg_m3"] = round(float(m["water_content_kg_m3"]) / float(m["water_cement_ratio"]), 2)
+    elif parameter == "admixture_dosage_pct":
+        m["admixture_dosage_pct"] = _clamp(float(new_value), 0.0, 3.0)
+        reduction = 1.0 - (float(m["admixture_dosage_pct"]) * 0.04)
+        reduction = _clamp(reduction, 0.80, 1.0)
+        m["water_content_kg_m3"] = round(float(m["water_content_kg_m3"]) * reduction, 2)
+        m["cement_content_kg_m3"] = round(float(m["water_content_kg_m3"]) / float(m["water_cement_ratio"]), 2)
+    elif parameter == "moisture_correction_fine_pct":
+        m["moisture_correction_fine_pct"] = _clamp(float(new_value), -5.0, 8.0)
+    elif parameter == "moisture_correction_coarse_pct":
+        m["moisture_correction_coarse_pct"] = _clamp(float(new_value), -5.0, 8.0)
+    else:
+        warnings.append(f"Unsupported recalculation parameter: {parameter}")
+
+    fine_adj = (
+        (float(m.get("moisture_correction_fine_pct", 0.0)) - float(m.get("absorption_fine_pct", 0.0)))
+        / 100.0
+        * float(m.get("fine_agg_content_kg_m3", 0.0))
+    )
+    coarse_adj = (
+        (float(m.get("moisture_correction_coarse_pct", 0.0)) - float(m.get("absorption_coarse_pct", 0.0)))
+        / 100.0
+        * float(m.get("coarse_agg_content_kg_m3", 0.0))
+    )
+    m["field_water_adjustment_kg"] = round(-(fine_adj + coarse_adj), 2)
+
+    m["final_batch_water_kg"] = round(float(m["water_content_kg_m3"]) + float(m["field_water_adjustment_kg"]), 2)
+    m["final_batch_cement_kg"] = round(float(m["cement_content_kg_m3"]), 2)
+    m["final_batch_fine_agg_kg"] = round(
+        float(m["fine_agg_content_kg_m3"]) * (1 + float(m.get("moisture_correction_fine_pct", 0.0)) / 100.0), 2
+    )
+    m["final_batch_coarse_agg_kg"] = round(
+        float(m["coarse_agg_content_kg_m3"]) * (1 + float(m.get("moisture_correction_coarse_pct", 0.0)) / 100.0), 2
+    )
+
+    if not (0.3 <= float(m["water_cement_ratio"]) <= 0.65):
+        warnings.append("Water-cement ratio is outside typical durable concrete range (0.30-0.65).")
+    if float(m["cement_content_kg_m3"]) < 280:
+        warnings.append("Cement content is low; check minimum cement content requirement for exposure condition.")
+    if float(m["slump_mm"]) > 150:
+        warnings.append("High slump detected; verify segregation and bleeding risk.")
+
+    cement = float(m["cement_content_kg_m3"]) or 1.0
+    fine = float(m["fine_agg_content_kg_m3"]) / cement
+    coarse = float(m["coarse_agg_content_kg_m3"]) / cement
+    water = float(m["water_content_kg_m3"]) / cement
+    m["mix_proportion_by_weight"] = f"1:{fine:.2f}:{coarse:.2f} (w/c={water:.2f})"
+    return m, warnings
+
+
+UPDATE_FIELDS = [
+    "mix_name",
+    "project_tag",
+    "concrete_grade",
+    "target_mean_strength",
+    "design_method",
+    "cement_type",
+    "max_aggregate_size_mm",
+    "exposure_condition",
+    "slump_mm",
+    "water_cement_ratio",
+    "water_content_kg_m3",
+    "cement_content_kg_m3",
+    "fine_agg_content_kg_m3",
+    "coarse_agg_content_kg_m3",
+    "admixture_type",
+    "admixture_dosage_pct",
+    "sg_cement",
+    "sg_fine_agg",
+    "sg_coarse_agg",
+    "sg_admixture",
+    "moisture_correction_fine_pct",
+    "moisture_correction_coarse_pct",
+    "absorption_fine_pct",
+    "absorption_coarse_pct",
+    "field_water_adjustment_kg",
+    "final_batch_water_kg",
+    "final_batch_cement_kg",
+    "final_batch_fine_agg_kg",
+    "final_batch_coarse_agg_kg",
+    "mix_proportion_by_weight",
+    "quantity_basis",
+    "assumptions",
+    "remarks",
+    "category",
+    "status",
+    "is_public",
+]
+
+
+CREATE_FIELDS = [
+    "mix_id",
+    "slug",
+    "mix_name",
+    "project_tag",
+    "concrete_grade",
+    "target_mean_strength",
+    "design_method",
+    "cement_type",
+    "max_aggregate_size_mm",
+    "exposure_condition",
+    "slump_mm",
+    "water_cement_ratio",
+    "water_content_kg_m3",
+    "cement_content_kg_m3",
+    "fine_agg_content_kg_m3",
+    "coarse_agg_content_kg_m3",
+    "admixture_type",
+    "admixture_dosage_pct",
+    "sg_cement",
+    "sg_fine_agg",
+    "sg_coarse_agg",
+    "sg_admixture",
+    "moisture_correction_fine_pct",
+    "moisture_correction_coarse_pct",
+    "absorption_fine_pct",
+    "absorption_coarse_pct",
+    "field_water_adjustment_kg",
+    "final_batch_water_kg",
+    "final_batch_cement_kg",
+    "final_batch_fine_agg_kg",
+    "final_batch_coarse_agg_kg",
+    "mix_proportion_by_weight",
+    "quantity_basis",
+    "assumptions",
+    "remarks",
+    "category",
+    "status",
+    "is_public",
+]
+
+
 if slug:
     detail = api_get(f"/mixes/{slug}", timeout=20)
     if detail.status_code == 200:
@@ -251,7 +403,17 @@ if slug:
                         "parameter": parameter,
                         "new_value": float(new_value),
                         "response": r.json(),
+                        "source": "api",
                     }
+                elif r.status_code == 404:
+                    preview_mix, preview_warnings = local_recalc_preview(mix, parameter, float(new_value))
+                    st.session_state[preview_key] = {
+                        "parameter": parameter,
+                        "new_value": float(new_value),
+                        "response": {"updated_mix": preview_mix, "warnings": preview_warnings},
+                        "source": "local_fallback",
+                    }
+                    st.info("Using local preview mode because backend preview endpoint is unavailable.")
                 else:
                     st.error(r.text)
 
@@ -299,6 +461,17 @@ if slug:
                             st.session_state.pop(preview_key, None)
                             st.query_params["slug"] = out["saved_mix"]["slug"]
                             st.rerun()
+                        elif res.status_code == 404 and preview_state.get("source") == "local_fallback":
+                            update_payload = {f: preview_mix[f] for f in UPDATE_FIELDS if f in preview_mix}
+                            upd = api_put(f"/mixes/{slug}", json=update_payload, timeout=25)
+                            if upd.status_code == 200:
+                                saved = upd.json()
+                                st.success(f"Saved changes to mix {saved['mix_id']}.")
+                                st.session_state.pop(preview_key, None)
+                                st.query_params["slug"] = saved["slug"]
+                                st.rerun()
+                            else:
+                                st.error(upd.text)
                         else:
                             st.error(res.text)
                 else:
@@ -326,6 +499,20 @@ if slug:
                             st.session_state.pop(preview_key, None)
                             st.query_params["slug"] = out["saved_mix"]["slug"]
                             st.rerun()
+                        elif res.status_code == 404 and preview_state.get("source") == "local_fallback":
+                            create_payload = {f: preview_mix[f] for f in CREATE_FIELDS if f in preview_mix}
+                            create_payload["mix_id"] = new_mix_id.strip()
+                            create_payload["slug"] = new_slug.strip()
+                            create_payload["mix_name"] = new_mix_name.strip()
+                            cre = api_post("/mixes", json=create_payload, timeout=25)
+                            if cre.status_code == 200:
+                                saved = cre.json()
+                                st.success(f"Saved as new mix {saved['mix_id']}.")
+                                st.session_state.pop(preview_key, None)
+                                st.query_params["slug"] = saved["slug"]
+                                st.rerun()
+                            else:
+                                st.error(cre.text)
                         else:
                             st.error(res.text)
 
