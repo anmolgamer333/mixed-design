@@ -198,9 +198,10 @@ def render_download_button(
     filename: str,
     mime: str,
     params: dict | None = None,
+    timeout: int = 30,
 ) -> None:
     try:
-        resp = api_get(path, timeout=30, params=params)
+        resp = api_get(path, timeout=timeout, params=params)
         if resp.status_code == 200:
             st.download_button(label, data=resp.content, file_name=filename, mime=mime, use_container_width=True)
         else:
@@ -555,5 +556,18 @@ if upload and st.button("Run Import"):
     else:
         st.error(r.text)
 
-st.markdown(f"[Download QR Sheet PDF]({API_BASE}/mixes/qr/sheet?limit=60)")
-st.markdown(f"[Export Full Database JSON]({API_BASE}/mixes/database/export)")
+st.markdown("### Database Exports")
+render_download_button(
+    "Download QR Sheet PDF",
+    "/mixes/qr/sheet?limit=60",
+    "qr-sheet.pdf",
+    "application/pdf",
+    timeout=60,
+)
+render_download_button(
+    "Export Full Database JSON",
+    "/mixes/database/export",
+    "mix-database.json",
+    "application/json",
+    timeout=60,
+)
