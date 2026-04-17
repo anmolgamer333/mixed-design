@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 import qrcode
 import qrcode.image.svg
@@ -11,8 +12,8 @@ QR_DIR = BASE_DIR / "generated" / "qr"
 QR_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def build_mix_url(slug: str) -> str:
-    base = settings.base_public_url.rstrip("/")
+def build_mix_url(slug: str, base_public_url: Optional[str] = None) -> str:
+    base = (base_public_url or settings.base_public_url).rstrip("/")
     parsed = urlparse(base)
 
     if parsed.scheme and parsed.netloc:
@@ -23,8 +24,8 @@ def build_mix_url(slug: str) -> str:
     return f"{base}?slug={slug}"
 
 
-def generate_qr_assets(slug: str) -> tuple[str, str]:
-    url = build_mix_url(slug)
+def generate_qr_assets(slug: str, base_public_url: Optional[str] = None) -> tuple[str, str]:
+    url = build_mix_url(slug, base_public_url=base_public_url)
 
     png_path = QR_DIR / f"{slug}.png"
     svg_path = QR_DIR / f"{slug}.svg"

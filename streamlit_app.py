@@ -31,6 +31,7 @@ def infer_public_base_url() -> str | None:
 
 
 INFERRED_PUBLIC_BASE_URL = infer_public_base_url()
+QR_PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", INFERRED_PUBLIC_BASE_URL or "").rstrip("/")
 
 
 def _api_url(path: str) -> str:
@@ -187,9 +188,15 @@ if slug and st.query_params.get("slug") != slug:
     st.query_params["slug"] = slug
 
 
-def render_download_button(label: str, path: str, filename: str, mime: str) -> None:
+def render_download_button(
+    label: str,
+    path: str,
+    filename: str,
+    mime: str,
+    params: dict | None = None,
+) -> None:
     try:
-        resp = api_get(path, timeout=30)
+        resp = api_get(path, timeout=30, params=params)
         if resp.status_code == 200:
             st.download_button(label, data=resp.content, file_name=filename, mime=mime, use_container_width=True)
         else:
@@ -252,7 +259,8 @@ if slug:
         with c2:
             st.markdown("### QR")
             try:
-                qr_resp = api_get(f"/mixes/{slug}/qr/png", timeout=20)
+                qr_params = {"base_url": QR_PUBLIC_BASE_URL} if QR_PUBLIC_BASE_URL else None
+                qr_resp = api_get(f"/mixes/{slug}/qr/png", timeout=20, params=qr_params)
                 if qr_resp.status_code == 200:
                     st.image(qr_resp.content, caption=f"QR for {slug}")
                 else:
@@ -269,8 +277,9 @@ if slug:
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
             render_download_button("Download PDF", f"/mixes/{slug}/export/pdf", f"{slug}.pdf", "application/pdf")
-            render_download_button("Download QR PNG", f"/mixes/{slug}/qr/png", f"{slug}.png", "image/png")
-            render_download_button("Download QR SVG", f"/mixes/{slug}/qr/svg", f"{slug}.svg", "image/svg+xml")
+            qr_params = {"base_url": QR_PUBLIC_BASE_URL} if QR_PUBLIC_BASE_URL else None
+            render_download_button("Download QR PNG", f"/mixes/{slug}/qr/png", f"{slug}.png", "image/png", params=qr_params)
+            render_download_button("Download QR SVG", f"/mixes/{slug}/qr/svg", f"{slug}.svg", "image/svg+xml", params=qr_params)
     else:
         st.error("Mix not found")
 
