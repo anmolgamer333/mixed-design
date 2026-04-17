@@ -21,6 +21,8 @@ from app.schemas.mix import (
     MixDesignOut,
     MixDesignUpdate,
     MixListResponse,
+    RecalculateApplyRequest,
+    RecalculateApplyResponse,
     RecalculateRequest,
     RecalculateResponse,
     RevisionOut,
@@ -60,6 +62,15 @@ def _ensure_qr_assets(
     mix.qr_path_svg = svg
     db.commit()
     db.refresh(mix)
+
+
+def _clone_mix_for_calculation(src: MixDesign) -> MixDesign:
+    data = {c.name: getattr(src, c.name) for c in src.__table__.columns if c.name != "id"}
+    clone = MixDesign(**data)
+    clone.id = src.id
+    clone.created_at = src.created_at
+    clone.updated_at = src.updated_at
+    return clone
 
 
 @router.get("", response_model=MixListResponse)
@@ -211,6 +222,97 @@ def duplicate_mix(slug: str, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(copy_mix)
     return copy_mix
+
+
+@router.post("/{slug}/recalculate/preview", response_model=RecalculateResponse)
+def recalculate_preview(slug: str, payload: RecalculateRequest, db: Session = Depends(get_db)):
+    source_mix = db.query(MixDesign).filter(MixDesign.slug == slug).first()
+    if not source_mix:
+        raise HTTPException(status_code=404, detail="Mix not found")
+
+    preview_mix = _clone_mix_for_calculation(source_mix)
+    outcome = recalculate_mix(preview_mix, payload.parameter, payload.new_value)
+    return RecalculateResponse(updated_mix=preview_mix, warnings=outcome.warnings)
+
+
+@router.post("/{slug}/recalculate/apply", response_model=RecalculateApplyResponse)
+def recalculate_apply(slug: str, payload: RecalculateApplyRequest, db: Session = Depends(get_db)):
+    source_mix = db.query(MixDesign).filter(MixDesign.slug == slug).first()
+    if not source_mix:
+        raise HTTPException(status_code=404, detail="Mix not found")
+
+    old_value = getattr(source_mix, payload.parameter, None)
+
+    if payload.save_mode == "overwrite":
+        outcome = recalculate_mix(source_mix, payload.parameter, payload.new_value)
+
+        if payload.save_revision:
+            rev = MixRevision(
+                mix_design_id=source_mix.id,
+                revision_label=f"rev-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                changed_parameter=payload.parameter,
+                old_value=str(old_value),
+                new_value=str(payload.new_value),
+                warning_message="; ".join(outcome.warnings),
+                snapshot_json=mix_snapshot(source_mix),
+            )
+            db.add(rev)
+
+        db.commit()
+        db.refresh(source_mix)
+        return RecalculateApplyResponse(
+            saved_mix=source_mix,
+            source_mix=source_mix,
+            mode="overwrite",
+            warnings=outcome.warnings,
+        )
+
+    ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    new_mix_id = payload.new_mix_id or f"{source_mix.mix_id}-R{ts[-4:]}"
+    new_slug = payload.new_slug or f"{source_mix.slug}-r{ts[-4:]}"
+    new_mix_name = payload.new_mix_name or f"{source_mix.mix_name} (Recalculated)"
+
+    duplicate = db.query(MixDesign).filter((MixDesign.mix_id == new_mix_id) | (MixDesign.slug == new_slug)).first()
+    if duplicate:
+        raise HTTPException(status_code=400, detail="New Mix ID or slug already exists")
+
+    copy_data = {c.name: getattr(source_mix, c.name) for c in source_mix.__table__.columns}
+    copy_data.pop("id", None)
+    copy_data["mix_id"] = new_mix_id
+    copy_data["slug"] = new_slug
+    copy_data["mix_name"] = new_mix_name
+    copy_data["download_ref"] = f"/api/mixes/{new_slug}/export/pdf"
+
+    new_mix = MixDesign(**copy_data)
+    outcome = recalculate_mix(new_mix, payload.parameter, payload.new_value)
+    png, svg = generate_qr_assets(new_mix.slug)
+    new_mix.qr_path_png = png
+    new_mix.qr_path_svg = svg
+
+    db.add(new_mix)
+    db.flush()
+
+    if payload.save_revision:
+        rev = MixRevision(
+            mix_design_id=source_mix.id,
+            revision_label=f"rev-new-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+            changed_parameter=payload.parameter,
+            old_value=str(old_value),
+            new_value=str(payload.new_value),
+            warning_message=f"Saved as new mix: {new_mix.mix_id}. " + "; ".join(outcome.warnings),
+            snapshot_json=mix_snapshot(new_mix),
+        )
+        db.add(rev)
+
+    db.commit()
+    db.refresh(source_mix)
+    db.refresh(new_mix)
+    return RecalculateApplyResponse(
+        saved_mix=new_mix,
+        source_mix=source_mix,
+        mode="new_mix",
+        warnings=outcome.warnings,
+    )
 
 
 @router.post("/{slug}/recalculate", response_model=RecalculateResponse)

@@ -239,22 +239,95 @@ if slug:
                 ],
             )
             new_value = st.number_input("New value", value=float(mix.get(parameter, 0) or 0), format="%.3f")
-            if st.button("Recalculate and Save Revision"):
+            preview_key = f"recalc_preview_{slug}"
+            if st.button("Preview Recalculated Mix", key=f"preview_btn_{slug}"):
                 r = api_post(
-                    f"/mixes/{slug}/recalculate",
-                    json={"parameter": parameter, "new_value": float(new_value), "save_revision": True},
+                    f"/mixes/{slug}/recalculate/preview",
+                    json={"parameter": parameter, "new_value": float(new_value), "save_revision": False},
                     timeout=20,
                 )
                 if r.status_code == 200:
-                    out = r.json()
-                    warns = out.get("warnings", [])
-                    if warns:
-                        for w in warns:
-                            st.warning(w)
-                    st.success("Recalculation completed.")
-                    st.rerun()
+                    st.session_state[preview_key] = {
+                        "parameter": parameter,
+                        "new_value": float(new_value),
+                        "response": r.json(),
+                    }
                 else:
                     st.error(r.text)
+
+            preview_state = st.session_state.get(preview_key)
+            if preview_state:
+                preview_mix = preview_state["response"]["updated_mix"]
+                st.markdown("#### Preview (Not Saved Yet)")
+                preview_rows = [
+                    {"Parameter": "Grade of concrete", "Value": str(preview_mix["concrete_grade"]), "Unit": "-"},
+                    {"Parameter": "Target mean strength", "Value": str(preview_mix["target_mean_strength"]), "Unit": "MPa"},
+                    {"Parameter": "Water-cement ratio", "Value": str(preview_mix["water_cement_ratio"]), "Unit": "-"},
+                    {"Parameter": "Water content", "Value": str(preview_mix["water_content_kg_m3"]), "Unit": "kg/m3"},
+                    {"Parameter": "Cement content", "Value": str(preview_mix["cement_content_kg_m3"]), "Unit": "kg/m3"},
+                    {"Parameter": "Fine aggregate", "Value": str(preview_mix["fine_agg_content_kg_m3"]), "Unit": "kg/m3"},
+                    {"Parameter": "Coarse aggregate", "Value": str(preview_mix["coarse_agg_content_kg_m3"]), "Unit": "kg/m3"},
+                    {"Parameter": "Admixture dosage", "Value": str(preview_mix["admixture_dosage_pct"]), "Unit": "%"},
+                    {"Parameter": "Water adjustment", "Value": str(preview_mix["field_water_adjustment_kg"]), "Unit": "kg/m3"},
+                    {"Parameter": "Mix proportion", "Value": str(preview_mix["mix_proportion_by_weight"]), "Unit": "by wt"},
+                ]
+                st.table(preview_rows)
+
+                preview_warnings = preview_state["response"].get("warnings", [])
+                if preview_warnings:
+                    for warning_msg in preview_warnings:
+                        st.warning(warning_msg)
+
+                save_option = st.radio(
+                    "Save option",
+                    ["Modify current mix", "Save as new mix design"],
+                    key=f"save_option_{slug}",
+                )
+
+                if save_option == "Modify current mix":
+                    if st.button("Save Changes to Current Mix", key=f"save_overwrite_{slug}"):
+                        payload = {
+                            "parameter": preview_state["parameter"],
+                            "new_value": preview_state["new_value"],
+                            "save_mode": "overwrite",
+                            "save_revision": True,
+                        }
+                        res = api_post(f"/mixes/{slug}/recalculate/apply", json=payload, timeout=25)
+                        if res.status_code == 200:
+                            out = res.json()
+                            st.success(f"Saved changes to mix {out['saved_mix']['mix_id']}.")
+                            st.session_state.pop(preview_key, None)
+                            st.query_params["slug"] = out["saved_mix"]["slug"]
+                            st.rerun()
+                        else:
+                            st.error(res.text)
+                else:
+                    default_new_mix_id = f"{mix['mix_id']}-R1"
+                    default_new_slug = f"{mix['slug']}-r1"
+                    default_new_name = f"{mix['mix_name']} (Recalculated)"
+                    new_mix_id = st.text_input("New Mix ID", value=default_new_mix_id, key=f"new_mix_id_{slug}")
+                    new_slug = st.text_input("New Slug", value=default_new_slug, key=f"new_slug_{slug}")
+                    new_mix_name = st.text_input("New Mix Name", value=default_new_name, key=f"new_name_{slug}")
+
+                    if st.button("Save as New Mix Design", key=f"save_new_mix_{slug}"):
+                        payload = {
+                            "parameter": preview_state["parameter"],
+                            "new_value": preview_state["new_value"],
+                            "save_mode": "new_mix",
+                            "new_mix_id": new_mix_id.strip(),
+                            "new_slug": new_slug.strip(),
+                            "new_mix_name": new_mix_name.strip(),
+                            "save_revision": True,
+                        }
+                        res = api_post(f"/mixes/{slug}/recalculate/apply", json=payload, timeout=25)
+                        if res.status_code == 200:
+                            out = res.json()
+                            st.success(f"Saved as new mix {out['saved_mix']['mix_id']}.")
+                            st.session_state.pop(preview_key, None)
+                            st.query_params["slug"] = out["saved_mix"]["slug"]
+                            st.rerun()
+                        else:
+                            st.error(res.text)
 
         with c2:
             st.markdown("### QR")

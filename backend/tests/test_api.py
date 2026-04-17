@@ -164,3 +164,43 @@ def test_recalculation_creates_revision():
     revisions = client.get("/api/mixes/mx-t001/revisions")
     assert revisions.status_code == 200
     assert len(revisions.json()) >= 1
+
+
+def test_recalculation_preview_and_save_as_new_mix():
+    app = build_test_app()
+    client = TestClient(app)
+
+    current = client.get("/api/mixes/mx-t001")
+    assert current.status_code == 200
+    original_ratio = current.json()["water_cement_ratio"]
+
+    preview = client.post(
+        "/api/mixes/mx-t001/recalculate/preview",
+        json={"parameter": "water_cement_ratio", "new_value": 0.36, "save_revision": False},
+    )
+    assert preview.status_code == 200
+    assert preview.json()["updated_mix"]["water_cement_ratio"] == 0.36
+
+    after_preview = client.get("/api/mixes/mx-t001")
+    assert after_preview.status_code == 200
+    assert after_preview.json()["water_cement_ratio"] == original_ratio
+
+    save_new = client.post(
+        "/api/mixes/mx-t001/recalculate/apply",
+        json={
+            "parameter": "water_cement_ratio",
+            "new_value": 0.36,
+            "save_mode": "new_mix",
+            "new_mix_id": "MX-T003",
+            "new_slug": "mx-t003",
+            "new_mix_name": "Recalculated Mix",
+            "save_revision": True,
+        },
+    )
+    assert save_new.status_code == 200
+    assert save_new.json()["mode"] == "new_mix"
+    assert save_new.json()["saved_mix"]["mix_id"] == "MX-T003"
+    assert save_new.json()["saved_mix"]["water_cement_ratio"] == 0.36
+
+    new_mix = client.get("/api/mixes/mx-t003")
+    assert new_mix.status_code == 200

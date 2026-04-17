@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -132,6 +132,23 @@ class RecalculateRequest(BaseModel):
 
 class RecalculateResponse(BaseModel):
     updated_mix: MixDesignOut
+    warnings: list[str]
+
+
+class RecalculateApplyRequest(BaseModel):
+    parameter: str
+    new_value: float
+    save_mode: Literal["overwrite", "new_mix"] = "overwrite"
+    new_mix_id: Optional[str] = None
+    new_slug: Optional[str] = None
+    new_mix_name: Optional[str] = None
+    save_revision: bool = True
+
+
+class RecalculateApplyResponse(BaseModel):
+    saved_mix: MixDesignOut
+    source_mix: MixDesignOut
+    mode: str
     warnings: list[str]
 
 
